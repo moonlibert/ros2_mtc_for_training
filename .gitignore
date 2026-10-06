@@ -1,0 +1,12 @@
+# colcon 构建产物
+build/
+install/
+log/
+
+# IDE 编译数据库（软链到 build/ 内，本地生成）
+compile_commands.json
+
+# 系统/编辑器杂项
+.vscode/
+*~
+*.swp
