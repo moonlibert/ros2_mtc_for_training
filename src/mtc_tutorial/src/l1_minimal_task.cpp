@@ -7,6 +7,8 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <thread>
+
 #include <moveit/task_constructor/task.h>
 #include <moveit/task_constructor/stages/current_state.h>
 #include <moveit/task_constructor/stages/move_to.h>
@@ -47,22 +49,25 @@ int main(int argc, char** argv)
   rclcpp::init(argc, argv);
   auto node = rclcpp::Node::make_shared("l1_minimal_task");
 
+  // 关键：规划前就在独立线程中 spin 主节点。
+  // plan() 期间 OMPL 规划管线会向主节点注册发布器，CurrentState 也要靠
+  // 它接收 planning scene / joint_states，主节点必须保持事件循环运转
+  std::thread spinning_thread([node] { rclcpp::spin(node); });
+
+  // 关键：Task 生命周期必须覆盖到进程结束——
+  // introspection 节点/话题随 Task 析构而注销，
+  // 若 task 死在 spin 之前，RViz 将永远看不到任务树
+  auto task = createTask(node);
+
   try
   {
-    auto task = createTask(node);
-
-    // init()：连接相邻 Stage 的接口，检查属性配置是否完整
-    // 接线错误（如 Propagator 前面没有状态来源）会在这里抛异常
     task.init();
 
-    // plan()：让整个任务树开始求解，最多保留 5 个解
     if (task.plan(5))
     {
       RCLCPP_INFO(node->get_logger(), "规划成功，共 %zu 个解，最优代价 %.3f", task.numSolutions(),
                   task.solutions().front()->cost());
 
-      // 把最优解发布到 introspection 话题，
-      // RViz 的 "Motion Planning Tasks" 面板可以逐阶段回放
       task.introspection().publishSolution(*task.solutions().front());
     }
     else
@@ -75,8 +80,8 @@ int main(int argc, char** argv)
     RCLCPP_ERROR(node->get_logger(), "任务初始化失败: %s", e.what());
   }
 
-  // 保持节点存活：RViz 通过该节点提供的 introspection 服务回看解
-  rclcpp::spin(node);
+  // 此时 task 仍然活着，RViz 随时可以来回看解
+  spinning_thread.join();
   rclcpp::shutdown();
   return 0;
 }
