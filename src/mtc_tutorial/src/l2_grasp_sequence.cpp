@@ -10,6 +10,7 @@
 // ============================================================
 
 #include <rclcpp/rclcpp.hpp>
+#include <thread>
 
 #include <moveit/task_constructor/task.h>
 #include <moveit/task_constructor/container.h>  // SerialContainer
@@ -110,9 +111,14 @@ int main(int argc, char** argv)
   rclcpp::init(argc, argv);
   auto node = rclcpp::Node::make_shared("l2_grasp_sequence");
 
+  // 规划前就启动 spin：OMPL 管线 / MoveGroup 客户端都需要节点事件循环
+  std::thread spinning_thread([node] { rclcpp::spin(node); });
+
+  // task 必须存活到进程结束，否则 introspection 节点提前析构，RViz 看不到任务树
+  auto task = createTask(node);
+
   try
   {
-    auto task = createTask(node);
     task.init();
 
     if (!task.plan(5))
@@ -138,8 +144,7 @@ int main(int argc, char** argv)
     RCLCPP_ERROR(node->get_logger(), "任务初始化失败: %s", e.what());
   }
 
-  // spin 保持 introspection 在线，RViz 可以回看
-  rclcpp::spin(node);
+  spinning_thread.join();
   rclcpp::shutdown();
   return 0;
 }

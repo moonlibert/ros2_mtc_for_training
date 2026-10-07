@@ -17,7 +17,11 @@ ament_target_dependencies(l1_minimal_task rclcpp moveit_task_constructor_core)
 add_executable(l2_grasp_sequence src/l2_grasp_sequence.cpp)
 ament_target_dependencies(l2_grasp_sequence rclcpp moveit_task_constructor_core)
 
-install(TARGETS l1_minimal_task l2_grasp_sequence
+# Level 3: Pick & Place —— ModifyPlanningScene / 抓取附着 / 嵌套容器
+add_executable(l3_pick_place src/l3_pick_place.cpp)
+ament_target_dependencies(l3_pick_place rclcpp moveit_task_constructor_core)
+
+install(TARGETS l1_minimal_task l2_grasp_sequence l3_pick_place
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch
