@@ -21,10 +21,18 @@ ament_target_dependencies(l2_grasp_sequence rclcpp moveit_task_constructor_core)
 add_executable(l3_pick_place src/l3_pick_place.cpp)
 ament_target_dependencies(l3_pick_place rclcpp moveit_task_constructor_core)
 
-install(TARGETS l1_minimal_task l2_grasp_sequence l3_pick_place
+# Level 4: 进阶抓取 —— 自定义 Stage / 属性传播 / Fallbacks 备选
+add_executable(l4_advanced_grasp src/l4_advanced_grasp.cpp)
+ament_target_dependencies(l4_advanced_grasp rclcpp moveit_task_constructor_core)
+
+# 临时测试
+add_executable(test_ik_interface src/test_ik_interface.cpp)
+ament_target_dependencies(test_ik_interface rclcpp moveit_task_constructor_core)
+
+install(TARGETS l1_minimal_task l2_grasp_sequence l3_pick_place l4_advanced_grasp test_ik_interface
   DESTINATION lib/${PROJECT_NAME})
 
-install(DIRECTORY launch
+install(DIRECTORY launch rviz
   DESTINATION share/${PROJECT_NAME})
 
 ament_package()

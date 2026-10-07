@@ -4,8 +4,6 @@ from moveit_configs_utils import MoveItConfigsBuilder
 
 
 def generate_launch_description():
-    # 显式指定 URDF/SRDF，不依赖话题回退
-    # （L1/L2 靠 /robot_description 话题回退能跑，但显式指定更稳）
     moveit_config = (
         MoveItConfigsBuilder("moveit_resources_panda")
         .robot_description(file_path="config/panda.urdf.xacro")
@@ -16,7 +14,7 @@ def generate_launch_description():
     return LaunchDescription([
         Node(
             package="mtc_tutorial",
-            executable="l3_pick_place",
+            executable="l4_advanced_grasp",
             output="screen",
             parameters=[moveit_config.to_dict()],
         )

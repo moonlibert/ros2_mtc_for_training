@@ -18,7 +18,7 @@ from moveit_configs_utils import MoveItConfigsBuilder
 def generate_launch_description():
     rviz_config_arg = DeclareLaunchArgument(
         "rviz_config",
-        default_value="moveit.rviz",
+        default_value="moveit_mtc.rviz",
         description="RViz configuration file",
     )
 
@@ -59,8 +59,8 @@ def generate_launch_description():
         arguments=[
             "-d",
             PathJoinSubstitution([
-                FindPackageShare("moveit_resources_panda_moveit_config"),
-                "launch",
+                FindPackageShare("mtc_tutorial"),
+                "rviz",
                 LaunchConfiguration("rviz_config"),
             ]),
         ],

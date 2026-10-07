@@ -69,6 +69,7 @@ int main(int argc, char** argv)
                   task.solutions().front()->cost());
 
       task.introspection().publishSolution(*task.solutions().front());
+      task.execute(*task.solutions().front());
     }
     else
     {

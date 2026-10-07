@@ -89,6 +89,14 @@ mtc::Task createTask(const rclcpp::Node::SharedPtr& node)
   // ---- 1. 起点 ----
   root->add(std::make_unique<mtc::stages::CurrentState>("current"));
 
+  // 先回到 ready，给后续 IK 一个良好的起始构型
+  {
+    auto stage = std::make_unique<mtc::stages::MoveTo>("to ready", ompl);
+    stage->setGroup("panda_arm");
+    stage->setGoal("ready");
+    root->add(std::move(stage));
+  }
+
   // ---- 2. 往场景里加一个方块 ----
   // ModifyPlanningScene 不产生运动，只修改 PlanningScene（碰撞物体、附着关系等）
   {
@@ -115,11 +123,19 @@ mtc::Task createTask(const rclcpp::Node::SharedPtr& node)
     root->add(std::move(stage));
   }
 
-  // ---- 5. Pick 子容器：下探 → 合手 → 附着 → 抬起 ----
+  // ---- 5. Pick 子容器：允许碰撞 → 下探 → 合手 → 附着 → 抬起 ----
   {
     auto pick = std::make_unique<mtc::SerialContainer>("pick");
 
-    // 5a. 沿世界 -z 下探（末端走直线）
+    // 5a. 允许夹爪与方块碰撞（下探时手指会碰到方块，必须先放行）
+    {
+      auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("allow collision");
+      const std::vector<std::string> finger_links = {"panda_leftfinger", "panda_rightfinger", "panda_hand"};
+      stage->allowCollisions("object", finger_links, true);
+      pick->add(std::move(stage));
+    }
+
+    // 5b. 沿世界 -z 下探（末端走直线）
     {
       auto stage = std::make_unique<mtc::stages::MoveRelative>("approach", cartesian);
       stage->setGroup("panda_arm");
@@ -133,7 +149,7 @@ mtc::Task createTask(const rclcpp::Node::SharedPtr& node)
       pick->add(std::move(stage));
     }
 
-    // 5b. 闭合夹爪（抓住方块）
+    // 5c. 闭合夹爪（抓住方块）
     {
       auto stage = std::make_unique<mtc::stages::MoveTo>("close hand", joint_interp);
       stage->setGroup("hand");
@@ -141,17 +157,14 @@ mtc::Task createTask(const rclcpp::Node::SharedPtr& node)
       pick->add(std::move(stage));
     }
 
-    // 5c. 允许夹爪与方块碰撞（否则合手时碰撞检测会失败）
-    //     并把方块附着到 panda_hand，之后方块跟随夹爪运动
+    // 5d. 把方块附着到 panda_hand，之后方块跟随夹爪运动
     {
       auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("attach object");
-      const std::vector<std::string> finger_links = {"panda_leftfinger", "panda_rightfinger", "panda_hand"};
-      stage->allowCollisions("object", finger_links, true);
       stage->attachObject("object", "panda_hand");
       pick->add(std::move(stage));
     }
 
-    // 5d. 抬起
+    // 5e. 抬起
     {
       auto stage = std::make_unique<mtc::stages::MoveRelative>("lift", cartesian);
       stage->setGroup("panda_arm");
@@ -201,12 +214,10 @@ mtc::Task createTask(const rclcpp::Node::SharedPtr& node)
       place->add(std::move(stage));
     }
 
-    // 分离方块 + 恢复碰撞禁止
+    // 分离方块（不恢复碰撞禁止——手指还在物体旁边，retreat 后才安全）
     {
       auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("detach object");
       stage->detachObject("object", "panda_hand");
-      const std::vector<std::string> finger_links = {"panda_leftfinger", "panda_rightfinger", "panda_hand"};
-      stage->allowCollisions("object", finger_links, false);
       place->add(std::move(stage));
     }
 
@@ -253,8 +264,16 @@ int main(int argc, char** argv)
 
     if (!task.plan(5))
     {
-      RCLCPP_ERROR(node->get_logger(), "规划失败：检查抓取位姿、碰撞设置、IK 求解");
+      RCLCPP_ERROR(node->get_logger(), "规划失败，检查各 Stage 状态：");
+      // 遍历打印每个 Stage 有无解
+      task.stages()->traverseChildren(
+          [&node](const mtc::Stage& s, unsigned int /*depth*/) -> bool {
+            RCLCPP_ERROR(node->get_logger(), "  Stage '%s': %s", s.name().c_str(),
+                         s.solutions().empty() ? "无解" : "有解");
+            return true;
+          });
       rclcpp::shutdown();
+      spinning_thread.join();
       return 1;
     }
     RCLCPP_INFO(node->get_logger(), "规划成功，共 %zu 个解", task.numSolutions());
@@ -272,7 +291,8 @@ int main(int argc, char** argv)
     RCLCPP_ERROR(node->get_logger(), "任务初始化失败: %s", e.what());
   }
 
-  spinning_thread.join();
   rclcpp::shutdown();
+  if (spinning_thread.joinable())
+    spinning_thread.join();
   return 0;
 }
